@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.next/
+coverage/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+!.env.example
+
+# os / editor
+.DS_Store
+*.log
+
+# local tooling
+.claude/

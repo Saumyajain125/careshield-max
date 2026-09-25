@@ -1,0 +1,28 @@
+{
+  "name": "careshield-max",
+  "version": "1.0.0",
+  "private": true,
+  "description": "D2C health insurance buy journey for the CareShield Max plan",
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down -v",
+    "db:migrate": "npm run prisma:migrate -w @careshield/api",
+    "setup": "npm install && npm run db:up && npm run db:migrate",
+    "dev": "npm-run-all --parallel dev:api dev:web",
+    "dev:api": "npm run dev -w @careshield/api",
+    "dev:web": "npm run dev -w @careshield/web",
+    "build": "npm run build -w @careshield/api && npm run build -w @careshield/web",
+    "test": "npm run test -w @careshield/api",
+    "test:e2e": "npm run test:e2e -w @careshield/api",
+    "lint": "npm run lint -w @careshield/api && npm run lint -w @careshield/web"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
+  }
+}

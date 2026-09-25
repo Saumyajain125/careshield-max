@@ -1,0 +1,148 @@
+// CareShield Max - data model for the quote -> policy life cycle.
+//
+// Two design rules drive this schema:
+//   1. Every rupee value is NUMERIC(10, 2). Floating point is never allowed to
+//      touch money, so premiums are Prisma `Decimal` end to end.
+//   2. A quote walks a strict finite state machine. The `status` column is the
+//      single source of truth and every transition is guarded server side:
+//
+//        QUOTE_GENERATED -> MEDICAL_DECLARED -> PREMIUM_PAID -> POLICY_ISSUED
+//
+//      PREMIUM_PAID and POLICY_ISSUED are written inside one database
+//      transaction, so a quote is never observed as paid-but-unissued.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// The four states of the buy journey, in order.
+enum QuoteStatus {
+  QUOTE_GENERATED
+  MEDICAL_DECLARED
+  PREMIUM_PAID
+  POLICY_ISSUED
+}
+
+/// Outcome of underwriting the structured medical disclosures.
+enum EligibilityDecision {
+  ELIGIBLE
+  REFERRED
+  DECLINED
+}
+
+/// Lifecycle of a stored idempotent request.
+enum IdempotencyState {
+  IN_PROGRESS
+  COMPLETED
+}
+
+/// A locked premium calculation. Immutable once created: the premium a
+/// customer is shown is the premium they pay, for `expires_at - created_at`.
+model Quote {
+  id     String      @id @default(uuid()) @db.Uuid
+  status QuoteStatus @default(QUOTE_GENERATED)
+
+  // --- Rating inputs (the deterministic quote key) ---
+  age                      Int
+  hasPreExistingConditions Boolean @map("has_pre_existing_conditions")
+
+  // --- Rating output, broken out so the premium is auditable ---
+  basePremium      Decimal @map("base_premium") @db.Decimal(10, 2)
+  ageLoading       Decimal @map("age_loading") @db.Decimal(10, 2)
+  conditionLoading Decimal @map("condition_loading") @db.Decimal(10, 2)
+  totalPremium     Decimal @map("total_premium") @db.Decimal(10, 2)
+  currency         String  @default("INR") @db.Char(3)
+
+  // --- Quote lock window ---
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+
+  medicalDeclaration MedicalDeclaration?
+  policy             Policy?
+  idempotencyKeys    IdempotencyRecord[]
+
+  @@index([status, expiresAt])
+  @@map("quotes")
+}
+
+/// Structured health disclosures plus the underwriting decision they produced.
+/// One per quote: re-declaring overwrites the previous answers.
+model MedicalDeclaration {
+  id      String @id @default(uuid()) @db.Uuid
+  quoteId String @unique @map("quote_id") @db.Uuid
+  quote   Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  /// Raw answers as submitted, kept verbatim for audit.
+  disclosures Json @db.JsonB
+
+  decision EligibilityDecision
+  /// Human readable rule hits that produced `decision`.
+  reasons  String[]            @default([])
+
+  declaredAt DateTime @default(now()) @map("declared_at") @db.Timestamptz(3)
+
+  @@map("medical_declarations")
+}
+
+/// An issued insurance contract. Its existence is the proof of a bound policy;
+/// it is only ever written in the same transaction that marks the quote paid.
+model Policy {
+  id      String @id @default(uuid()) @db.Uuid
+  quoteId String @unique @map("quote_id") @db.Uuid
+  quote   Quote  @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+
+  /// Customer facing contract ID, e.g. CSM-2026-A1B2C3D4.
+  policyNumber String @unique @map("policy_number")
+  planCode     String @default("CARESHIELD_MAX") @map("plan_code")
+
+  premiumPaid Decimal @map("premium_paid") @db.Decimal(10, 2)
+  currency    String  @default("INR") @db.Char(3)
+
+  /// Reference returned by the payment gateway for this charge.
+  paymentReference String @map("payment_reference")
+
+  issuedAt    DateTime @default(now()) @map("issued_at") @db.Timestamptz(3)
+  coverStart  DateTime @map("cover_start") @db.Timestamptz(3)
+  coverEnd    DateTime @map("cover_end") @db.Timestamptz(3)
+
+  @@map("policies")
+}
+
+/// One row per `Idempotency-Key` seen on a mutating endpoint.
+///
+/// The row is inserted *before* any side effect runs. The primary key doubles
+/// as the concurrency lock: two simultaneous double-click requests race on the
+/// same insert, exactly one wins, and the loser either replays the stored
+/// response or is told the original is still in flight.
+model IdempotencyRecord {
+  key      String           @id
+  endpoint String
+  /// SHA-256 of the canonical request body, so a key cannot be reused for a
+  /// different payload.
+  requestHash String        @map("request_hash")
+  state    IdempotencyState @default(IN_PROGRESS)
+
+  /// Replayed verbatim once `state` is COMPLETED.
+  responseStatus Int?  @map("response_status")
+  responseBody   Json? @map("response_body") @db.JsonB
+
+  /// Gateway charge captured under this key, written before the issuance
+  /// transaction opens. If the process dies in that window this is the only
+  /// link between the key and money that has already moved.
+  chargeReference String? @map("charge_reference")
+
+  quoteId String? @map("quote_id") @db.Uuid
+  quote   Quote?  @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
+
+  @@index([endpoint, createdAt])
+  @@map("idempotency_records")
+}

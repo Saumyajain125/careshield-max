@@ -1,0 +1,29 @@
+{
+  "name": "@careshield/web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Next.js buy journey for the CareShield Max plan",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "15.5.26",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "15.5.26",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.2"
+  }
+}

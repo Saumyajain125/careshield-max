@@ -1,0 +1,48 @@
+@import 'tailwindcss';
+
+/*
+ * Source globs, relative to this file. The stylesheet sits at the root of src/
+ * rather than next to the app router files because Tailwind will not scan
+ * above its own directory - a globals.css in src/app/ generates no utilities
+ * for src/components/ and says nothing about it.
+ */
+@source "./**/*.{ts,tsx}";
+
+/* Design tokens, so the palette can be changed without touching components. */
+@theme {
+  --color-brand-50: oklch(0.97 0.02 250);
+  --color-brand-100: oklch(0.94 0.04 250);
+  --color-brand-500: oklch(0.55 0.16 255);
+  --color-brand-600: oklch(0.48 0.16 255);
+  --color-brand-700: oklch(0.41 0.14 255);
+
+  --color-ink: oklch(0.22 0.02 265);
+  --color-muted: oklch(0.52 0.02 265);
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background-color: oklch(0.98 0.005 265);
+  color: var(--color-ink);
+}
+
+/* Respect a reduced-motion preference for the countdown and spinners. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* A single, consistent focus ring across every interactive element. */
+:where(a, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
+  border-radius: 0.375rem;
+}
